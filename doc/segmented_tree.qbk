@@ -1,0 +1,183 @@
+[library Boost.SegmentedTree
+    [quickbook 1.6]
+    [version 1.0]
+    [copyright 2014-2015 Chris Clearwater]
+    [category Containers]
+    [license
+        Distributed under the Boost Software License, Version 1.0.
+        (See accompanying file LICENSE_1_0.txt or copy at
+        [@http://www.boost.org/LICENSE_1_0.txt])
+    ]
+]
+
+[section Motivation]
+
+The standard library provides sequence containers that offer efficient insertion
+at at the end (`std::vector`), efficient insertition at the front and the end
+(`std::deque`), but offers no solution for efficient random access insertion.
+
+Boost.SegmentedTree was designed to fill this use case.
+
+[note Boost.SegmentedTree is not currently a part of Boost.]
+
+[endsect]
+
+[section Getting started]
+
+The [classref boost::segmented_tree::seq] container supports the interfaces of
+`std::vector` and `std::deque`, it can be used in the same way as these
+containers with a few exceptions:
+
+* The time complexities of all operations may differ.
+* The iterator invalidation rules may differ.
+* The exception safety guarantees may differ.
+* `reserve()` and `shrink_to_fit()` are missing.
+* The standard library requires users to obtain an iterator to the middle of 
+  a sequence container by using "container.begin() + offset", doing this with
+  [classref boost::segmented_tree::seq] is inefficient. Instead users should
+  use [memberref boost::segmented_tree::seq::nth].
+
+[section How to use]
+
+Boost.SegmentedTree is a header only C++11 library and it does not depend on
+any other Boost libraries. Simply include [headerref
+boost/segmented_tree/seq.hpp] to start using it.
+
+[endsect]
+
+[section Example needle in a haystack]
+
+  #include <algorithm>
+  #include <iostream>
+  #include <boost/segmented_tree/seq.hpp>
+
+  int main() {
+    boost::segmented_tree::seq<std::string> haystack(100000, "hay");
+    haystack.insert(haystack.nth(33333), "needle");
+    auto first = haystack.begin();
+    auto last = haystack.end();
+    auto it = std::find(first, last, "needle");
+    if (it != last) {
+      std::cout << "Found needle at index: " << haystack.index_of(it) << "\n";
+      haystack.erase(it);
+    }
+  }
+
+[endsect]
+[endsect]
+
+[section Implementation]
+
+Boost.SegmentedTree is implemented using a counted
+[@https://en.wikipedia.org/wiki/B%2B_tree B+Tree].
+
+[section Representation]
+
+Internally the tree consists of segments and index_nodes:
+
+  struct index_node {
+    index_node *parent_pointer;
+    std::uint16_t parent_index_;
+    std::uint16_t length_;
+    std::array<size_type, base_max> sizes;
+    std::array<void *, base_max> pointers;
+  }
+
+  using segment = value_type *; // Of size segment_max.
+
+An index_node of height greater than 2 always contains other index_nodes as
+children. An index_node of height 2 always contains segments as chidlren. A
+segment is always of height 1 and is simply an array of value_type. Height 0 is
+the empty tree.
+
+The size array stores the recursive size of all its children.
+
+The segmented_tree::seq container looks like this:
+
+  struct seq {
+    size_type height;
+    size_type size;
+    void * root;
+  };
+
+The height of the tree can be used to determine what type root points to.
+
+Iterators look like this:
+
+  struct iterator {
+    segment segment;
+    size_type segment_index;
+    size_type segment_length;
+    index_node *parent;
+    index_node *parent_index
+    size_type position;
+  };
+
+Storing the position enables constant time comparison between iterators. This
+is possible because any destructive operation that would invalidate the position
+invalidates all iterators anyways. Additionally, a segment's metadata is stored
+here instead of the segment as an optimization. This is worthwhile because
+segments are mutated exponentially more often than any node above it and cache
+misses are reduced.
+
+[endsect]
+
+[section Searching]
+
+All searches start from the root of the tree. To find a given index in the tree
+you start from the root and perform linear searches on each index_node and walk
+down the tree until you reach a segment at height 1.
+
+[endsect]
+
+[section Inserting]
+
+If the segment pointed to by the iterator is not full then insert the element
+in segment and walk up the tree updating sizes. If the segement is full then
+split the segment into two and insert the new segment into the parent
+index_node. The index_node repeats this process. If the root is passed then
+create a new root index_node containing two children and increase the height.
+
+[endsect]
+
+[section Erasing]
+
+If the segment pointed to by the iterator is not at its minimum value then
+remove the element from the segment and walk up the tree updating sizes. If the
+segement is at its minimum size then try to steal an element from a sibling. If
+this succeeds then walk up the tree updating sizes. Otherwise, merge the segment
+with a neighbor and remove the neighbor from the parent index_node. The
+index_node repeats this process. If a root index_node of length 2 is hit, then
+make the remaning child the new root and decrease the height.
+
+[endsect]
+[endsect]
+
+[xinclude autodoc.xml]
+
+[section Performance]
+
+The following images show the results of randomly inserting, randomly erasing,
+and iterating over different containers. They come in two flavors, single (1
+element at a time), and range (many elements at a time). It can be seen that
+segmented_tree::seq generally has the fastest random access insert and erase of
+single elements. It also has the fastest iterators among containers with
+efficient random access insert and erase. However, btree_seq currently wins by a
+large margin for range insert and erase. All graphs are logairthmic scale on the
+y axis.
+
+[$images/insert_values-single-8.svg]
+[$images/accumulate_forward-single-8.svg]
+[$images/erase_values-single-8.svg]
+[$images/insert_values-single-64.svg]
+[$images/erase_values-single-64.svg]
+[$images/accumulate_forward-single-64.svg]
+[$images/insert_values-range-8.svg]
+[$images/erase_values-range-8.svg]
+[$images/accumulate_forward-range-8.svg]
+[$images/insert_values-range-64.svg]
+[$images/erase_values-range-64.svg]
+[$images/accumulate_forward-range-64.svg]
+
+[endsect]
+
