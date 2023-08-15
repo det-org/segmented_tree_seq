@@ -8,6 +8,7 @@ plugins:
       uri: https://github.com/trunk-io/plugins
 lint:
   enabled:
+    - pylint@2.17.5
     - bandit@1.7.5
     - black@23.7.0
     - checkov@2.3.365
